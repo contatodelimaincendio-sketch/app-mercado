@@ -315,3 +315,25 @@ with aba_historico:
     df_hist = conn.ler_historico(spreadsheet=URL_PLANILHA)
     
     if df_hist.empty:
+        st.info("Nenhuma compra salva no histórico ainda. Clique em '💾 Salvar Compra no Histórico' na aba anterior para registrar.")
+    else:
+        df_hist["Preco_Unit"] = pd.to_numeric(df_hist["Preco_Unit"], errors="coerce").fillna(0.0)
+        df_hist["Total_Item"] = pd.to_numeric(df_hist["Total_Item"], errors="coerce").fillna(0.0)
+        
+        st.markdown("**Total Gasto por Categoria (Histórico Geral):**")
+        gastos_cat_hist = df_hist.groupby("Categoria")["Total_Item"].sum().sort_values(ascending=False)
+        st.bar_chart(gastos_cat_hist, color="#28B463")
+
+        resumo_datas = df_hist.groupby("Data", sort=False)["Total_Item"].sum().reset_index()
+        resumo_datas.columns = ["Data da Compra", "Total Gasto (R$)"]
+        st.markdown("**Resumo por Data:**")
+        st.dataframe(resumo_datas, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        produtos_salvos = sorted(df_hist["Item"].unique().tolist())
+        produto_escolhido = st.selectbox("🔍 Comparar histórico de preço de um produto:", produtos_salvos)
+        
+        df_prod = df_hist[df_hist["Item"] == produto_escolhido][["Data", "Qtd", "Und", "Preco_Unit", "Total_Item"]]
+        st.dataframe(df_prod, use_container_width=True, hide_index=True)
+
