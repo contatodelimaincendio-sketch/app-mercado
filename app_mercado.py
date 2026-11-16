@@ -125,19 +125,36 @@ if "df_compras" not in st.session_state:
 
 st.title("🛒 Controle de Mercado")
 
-aba_lista, aba_historico = st.tabs(["🛒 Lista Atual", "📊 Histórico de Compras"])
+aba_lista, aba_historico = st.tabs(["🛒 Lista Atual", "📊 Gráficos e Histórico"])
 
 with aba_lista:
+    # Painel de Orçamento Máximo no topo para acompanhar durante as compras
+    df_calc = st.session_state.df_compras
+    total_atual = (df_calc[df_calc["No_Carrinho"]]["Qtd"] * df_calc[df_calc["No_Carrinho"]]["Preco_Unit"]).sum()
+
+    with st.container(border=True):
+        col_orc1, col_orc2 = st.columns([1, 2])
+        orcamento_max = col_orc1.number_input("🎯 Orçamento Máximo (R$)", min_value=50.0, value=800.0, step=50.0)
+        
+        percentual = min(total_atual / orcamento_max, 1.0) if orcamento_max > 0 else 0.0
+        saldo = orcamento_max - total_atual
+        
+        col_orc2.metric("💰 Total no Carrinho", f"R$ {total_atual:.2f}", delta=f"R$ {saldo:.2f} restantes" if saldo >= 0 else f"R$ {abs(saldo):.2f} acima do limite")
+        st.progress(percentual)
+        
+        if total_atual > orcamento_max:
+            st.error(f"🚨 Atenção: Você ultrapassou o orçamento máximo em R$ {abs(saldo):.2f}!")
+        elif percentual >= 0.85:
+            st.warning(f"⚠️ Cuidado: Você já consumiu {percentual*100:.0f}% do seu orçamento.")
+
     col_btn1, col_btn2 = st.columns(2)
     
-    # Botão para desmarcar tudo antes de começar uma compra
     if col_btn1.button("🔄 Nova Compra (Desmarcar)", use_container_width=True):
         st.session_state.df_compras["No_Carrinho"] = False
         conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
         st.toast("Carrinho zerado!", icon="✅")
         st.rerun()
 
-    # Botão para gravar a compra atual na aba Historico do Google Sheets
     if col_btn2.button("💾 Salvar Compra no Histórico", type="primary", use_container_width=True):
         df_pegos = st.session_state.df_compras[st.session_state.df_compras["No_Carrinho"]]
         if len(df_pegos) > 0:
@@ -204,19 +221,38 @@ with aba_lista:
     col_res2.metric("📦 Itens Pegos", f"{df_atualizado['No_Carrinho'].sum()} de {len(df_atualizado)}")
 
 with aba_historico:
-    st.subheader("📈 Evolução de Gastos e Preços")
+    # 1. Gráfico em tempo real da compra atual no carrinho
+    st.subheader("📊 Gastos por Categoria (Carrinho Atual)")
+    df_carrinho_atual = st.session_state.df_compras[st.session_state.df_compras["No_Carrinho"]].copy()
+    
+    if not df_carrinho_atual.empty:
+        df_carrinho_atual["Total"] = df_carrinho_atual["Qtd"] * df_carrinho_atual["Preco_Unit"]
+        gastos_cat_atual = df_carrinho_atual.groupby("Categoria")["Total"].sum().sort_values(ascending=False)
+        st.bar_chart(gastos_cat_atual, color="#2E86C1")
+    else:
+        st.info("Marque itens no carrinho na primeira aba para visualizar o gráfico da compra atual.")
+
+    st.divider()
+
+    # 2. Histórico acumulado das compras já finalizadas
+    st.subheader("📈 Histórico Acumulado e Evolução de Preços")
     df_hist = conn.ler_historico(spreadsheet=URL_PLANILHA)
     
     if df_hist.empty:
-        st.info("Nenhuma compra registrada ainda. Quando finalizar uma ida ao mercado, clique em '💾 Salvar Compra no Histórico' na aba anterior.")
+        st.info("Nenhuma compra salva no histórico ainda. Clique em '💾 Salvar Compra no Histórico' na aba anterior para registrar.")
     else:
         df_hist["Preco_Unit"] = pd.to_numeric(df_hist["Preco_Unit"], errors="coerce").fillna(0.0)
         df_hist["Total_Item"] = pd.to_numeric(df_hist["Total_Item"], errors="coerce").fillna(0.0)
         
+        # Gráfico acumulado por categoria em todo o histórico
+        st.markdown("**Total Gasto por Categoria (Histórico Geral):**")
+        gastos_cat_hist = df_hist.groupby("Categoria")["Total_Item"].sum().sort_values(ascending=False)
+        st.bar_chart(gastos_cat_hist, color="#28B463")
+
         # Resumo total gasto por data de compra
         resumo_datas = df_hist.groupby("Data", sort=False)["Total_Item"].sum().reset_index()
         resumo_datas.columns = ["Data da Compra", "Total Gasto (R$)"]
-        st.markdown("**Resumo por Compra:**")
+        st.markdown("**Resumo por Data:**")
         st.dataframe(resumo_datas, use_container_width=True, hide_index=True)
         
         st.divider()
