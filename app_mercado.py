@@ -1,10 +1,14 @@
+import os
+import gspread
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="Lista de Mercado", page_icon="🛒", layout="centered")
 
-# Dados base da sua planilha original (usados apenas se o Google Sheets estiver vazio)
+# 1. COLE AQUI O LINK COMPLETO DA SUA PLANILHA DO GOOGLE SHEETS
+URL_PLANILHA = "https://google.com"
+
+# 2. Dados base da sua planilha original (usados apenas se o Google Sheets estiver vazio)
 DADOS_INICIAIS = [
     {"Categoria": "Proteínas", "Item": "Peito / Filé de Frango", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 18.00, "No_Carrinho": True},
     {"Categoria": "Proteínas", "Item": "Carne Moída - Acém ou Patinho", "Qtd": 4.0, "Und": "kg", "Preco_Unit": 25.00, "No_Carrinho": True},
@@ -45,14 +49,36 @@ DADOS_INICIAIS = [
     {"Categoria": "Diversos", "Item": "Item Diverso 1", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
 ]
 
-# Conecta com o Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Conector compatível com gspread usando chave_google.json local ou Secrets na nuvem
+class PlanilhaGoogle:
+    def __init__(self):
+        caminho_json = os.path.join(os.path.dirname(__file__), "chave_google.json")
+        if os.path.exists(caminho_json):
+            self.gc = gspread.service_account(filename=caminho_json)
+        else:
+            credenciais = dict(st.secrets["connections"]["gsheets"])
+            credenciais.pop("spreadsheet", None)
+            self.gc = gspread.service_account_from_dict(credenciais)
+
+    def read(self, spreadsheet, ttl=0):
+        aba = self.gc.open_by_url(spreadsheet).sheet1
+        registros = aba.get_all_records()
+        return pd.DataFrame(registros)
+
+    def update(self, spreadsheet, data):
+        aba = self.gc.open_by_url(spreadsheet).sheet1
+        aba.clear()
+        df_salvar = data.fillna("")
+        dados_lista = [df_salvar.columns.values.tolist()] + df_salvar.values.tolist()
+        aba.update(dados_lista)
+
+conn = PlanilhaGoogle()
 
 def carregar_dados():
-    df = conn.read(ttl=0)
+    df = conn.read(spreadsheet=URL_PLANILHA)
     if df.empty or len(df) == 0:
         df = pd.DataFrame(DADOS_INICIAIS)
-        conn.update(data=df)
+        conn.update(spreadsheet=URL_PLANILHA, data=df)
     else:
         df["Item"] = df["Item"].fillna("").astype(str)
         df["Und"] = df["Und"].fillna("und").astype(str)
@@ -60,7 +86,6 @@ def carregar_dados():
         df["Preco_Unit"] = pd.to_numeric(df["Preco_Unit"], errors="coerce").fillna(0.0)
         df["No_Carrinho"] = df["No_Carrinho"].astype(str).str.upper().isin(["TRUE", "1", "SIM"])
     return df
-
 if "df_compras" not in st.session_state:
     st.session_state.df_compras = carregar_dados()
 
@@ -69,7 +94,7 @@ st.title("🛒 Controle de Mercado")
 # Botão para zerar carrinho no início de uma nova compra
 if st.button("🔄 Iniciar Nova Compra (Desmarcar todos os itens)"):
     st.session_state.df_compras["No_Carrinho"] = False
-    conn.update(data=st.session_state.df_compras)
+    conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
     st.toast("Carrinho zerado e salvo na planilha!", icon="✅")
     st.rerun()
 
@@ -119,10 +144,9 @@ for cat in categorias:
 # Reconstrói a planilha completa e salva no Google Sheets se algo mudou
 if houve_alteracao:
     df_reconstruido = pd.concat(novos_blocos, ignore_index=True)
-    # Remove linhas onde o nome do produto ficou completamente em branco
     df_reconstruido = df_reconstruido[df_reconstruido["Item"].str.strip() != ""].reset_index(drop=True)
     st.session_state.df_compras = df_reconstruido
-    conn.update(data=df_reconstruido)
+    conn.update(spreadsheet=URL_PLANILHA, data=df_reconstruido)
     st.toast("Alterações salvas no Google Sheets!", icon="☁️")
     st.rerun()
 
