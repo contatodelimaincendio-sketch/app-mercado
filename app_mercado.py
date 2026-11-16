@@ -1,3 +1,4 @@
+import json
 import os
 import gspread
 import streamlit as st
@@ -6,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="Lista de Mercado", page_icon="🛒", layout="centered")
 
 # 1. COLE AQUI O LINK COMPLETO DA SUA PLANILHA DO GOOGLE SHEETS
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/193UrLGzATObLaz8qyE7yyhYy7j8mZyamdtK_9209KDM/edit?gid=779834175#gid=779834175"
+URL_PLANILHA = "https://google.com"
 
 # 2. Dados base da sua planilha original (usados apenas se o Google Sheets estiver vazio)
 DADOS_INICIAIS = [
@@ -49,7 +50,6 @@ DADOS_INICIAIS = [
     {"Categoria": "Diversos", "Item": "Item Diverso 1", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
 ]
 
-# Conector compatível com gspread usando chave_google.json local ou Secrets na nuvem
 class PlanilhaGoogle:
     def __init__(self):
         caminho_json = os.path.join(os.path.dirname(__file__), "chave_google.json")
@@ -58,7 +58,6 @@ class PlanilhaGoogle:
         else:
             credenciais = json.loads(st.secrets["json_google"])
             self.gc = gspread.service_account_from_dict(credenciais)
-
 
     def read(self, spreadsheet, ttl=0):
         aba = self.gc.open_by_url(spreadsheet).sheet1
