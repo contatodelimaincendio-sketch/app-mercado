@@ -56,9 +56,9 @@ class PlanilhaGoogle:
         if os.path.exists(caminho_json):
             self.gc = gspread.service_account(filename=caminho_json)
         else:
-            credenciais = dict(st.secrets["connections"]["gsheets"])
-            credenciais.pop("spreadsheet", None)
+            credenciais = json.loads(st.secrets["json_google"])
             self.gc = gspread.service_account_from_dict(credenciais)
+
 
     def read(self, spreadsheet, ttl=0):
         aba = self.gc.open_by_url(spreadsheet).sheet1
