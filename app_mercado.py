@@ -57,6 +57,7 @@ class PlanilhaGoogle:
             self.gc = gspread.service_account(filename=caminho_json)
         else:
             credenciais = json.loads(st.secrets["json_google"])
+            credenciais["private_key"] = credenciais["private_key"].replace("\\n", "\n")
             self.gc = gspread.service_account_from_dict(credenciais)
 
     def read(self, spreadsheet, ttl=0):
