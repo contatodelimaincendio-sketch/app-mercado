@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 import gspread
 import streamlit as st
 import pandas as pd
@@ -60,7 +61,7 @@ class PlanilhaGoogle:
             credenciais["private_key"] = credenciais["private_key"].replace("\\n", "\n")
             self.gc = gspread.service_account_from_dict(credenciais)
 
-    def read(self, spreadsheet, ttl=0):
+    def read(self, spreadsheet):
         aba = self.gc.open_by_url(spreadsheet).sheet1
         registros = aba.get_all_records()
         return pd.DataFrame(registros)
@@ -71,6 +72,39 @@ class PlanilhaGoogle:
         df_salvar = data.fillna("")
         dados_lista = [df_salvar.columns.values.tolist()] + df_salvar.values.tolist()
         aba.update(dados_lista)
+
+    def _obter_aba_historico(self, planilha):
+        try:
+            return planilha.worksheet("Historico")
+        except gspread.WorksheetNotFound:
+            aba = planilha.add_worksheet(title="Historico", rows=1000, cols=10)
+            aba.update([["Data", "Categoria", "Item", "Qtd", "Und", "Preco_Unit", "Total_Item"]])
+            return aba
+
+    def ler_historico(self, spreadsheet):
+        planilha = self.gc.open_by_url(spreadsheet)
+        aba = self._obter_aba_historico(planilha)
+        registros = aba.get_all_records()
+        return pd.DataFrame(registros)
+
+    def registrar_historico(self, spreadsheet, df_itens_pegos):
+        planilha = self.gc.open_by_url(spreadsheet)
+        aba = self._obter_aba_historico(planilha)
+        data_hoje = datetime.now().strftime("%d/%m/%Y")
+        linhas = []
+        for _, row in df_itens_pegos.iterrows():
+            total_item = round(float(row["Qtd"]) * float(row["Preco_Unit"]), 2)
+            linhas.append([
+                data_hoje,
+                row["Categoria"],
+                row["Item"],
+                float(row["Qtd"]),
+                row["Und"],
+                float(row["Preco_Unit"]),
+                total_item
+            ])
+        if linhas:
+            aba.append_rows(linhas)
 
 conn = PlanilhaGoogle()
 
@@ -91,70 +125,105 @@ if "df_compras" not in st.session_state:
 
 st.title("🛒 Controle de Mercado")
 
-# Botão para zerar carrinho no início de uma nova compra
-if st.button("🔄 Iniciar Nova Compra (Desmarcar todos os itens)"):
-    st.session_state.df_compras["No_Carrinho"] = False
-    conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
-    st.toast("Carrinho zerado e salvo na planilha!", icon="✅")
-    st.rerun()
+aba_lista, aba_historico = st.tabs(["🛒 Lista Atual", "📊 Histórico de Compras"])
 
-df = st.session_state.df_compras
-categorias = df["Categoria"].unique()
-novos_blocos = []
-houve_alteracao = False
+with aba_lista:
+    col_btn1, col_btn2 = st.columns(2)
+    
+    # Botão para desmarcar tudo antes de começar uma compra
+    if col_btn1.button("🔄 Nova Compra (Desmarcar)", use_container_width=True):
+        st.session_state.df_compras["No_Carrinho"] = False
+        conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
+        st.toast("Carrinho zerado!", icon="✅")
+        st.rerun()
 
-colunas_tabela = ["No_Carrinho", "Item", "Qtd", "Und", "Preco_Unit"]
+    # Botão para gravar a compra atual na aba Historico do Google Sheets
+    if col_btn2.button("💾 Salvar Compra no Histórico", type="primary", use_container_width=True):
+        df_pegos = st.session_state.df_compras[st.session_state.df_compras["No_Carrinho"]]
+        if len(df_pegos) > 0:
+            conn.registrar_historico(spreadsheet=URL_PLANILHA, df_itens_pegos=df_pegos)
+            st.toast(f"{len(df_pegos)} itens salvos no histórico de hoje!", icon="🎉")
+        else:
+            st.warning("Marque pelo menos um item no carrinho antes de salvar no histórico.")
 
-for cat in categorias:
-    df_cat = df[df["Categoria"] == cat].reset_index(drop=True)
-    subtotal_cat = (df_cat[df_cat["No_Carrinho"]]["Qtd"] * df_cat[df_cat["No_Carrinho"]]["Preco_Unit"]).sum()
-    
-    st.subheader(f"{cat} — R$ {subtotal_cat:.2f}")
-    
-    # Tabela totalmente editável com opção de adicionar (+) ou excluir linhas
-    edited_df = st.data_editor(
-        df_cat[colunas_tabela],
-        key=f"editor_{cat}",
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "No_Carrinho": st.column_config.CheckboxColumn("Carrinho", default=False),
-            "Item": st.column_config.TextColumn("Produto", default="Novo item"),
-            "Qtd": st.column_config.NumberColumn("Qtd", min_value=0.0, step=0.5, default=1.0),
-            "Und": st.column_config.SelectboxColumn("Und", options=["und", "kg", "pct", "L", "g", "ml"], default="und"),
-            "Preco_Unit": st.column_config.NumberColumn("R$ Unit.", min_value=0.0, step=0.10, format="%.2f", default=0.0),
-        }
-    )
-    
-    # Preenche valores padrão caso uma nova linha tenha sido criada pelo botão '+'
-    edited_df["No_Carrinho"] = edited_df["No_Carrinho"].fillna(False).astype(bool)
-    edited_df["Item"] = edited_df["Item"].fillna("Novo item").astype(str)
-    edited_df["Qtd"] = pd.to_numeric(edited_df["Qtd"], errors="coerce").fillna(1.0)
-    edited_df["Und"] = edited_df["Und"].fillna("und").astype(str)
-    edited_df["Preco_Unit"] = pd.to_numeric(edited_df["Preco_Unit"], errors="coerce").fillna(0.0)
-    edited_df["Categoria"] = cat
-    
-    # Verifica se houve adição, exclusão ou edição nesta categoria
-    if not df_cat[colunas_tabela].equals(edited_df[colunas_tabela]):
-        houve_alteracao = True
+    df = st.session_state.df_compras
+    categorias = df["Categoria"].unique()
+    novos_blocos = []
+    houve_alteracao = False
+
+    colunas_tabela = ["No_Carrinho", "Item", "Qtd", "Und", "Preco_Unit"]
+
+    for cat in categorias:
+        df_cat = df[df["Categoria"] == cat].reset_index(drop=True)
+        subtotal_cat = (df_cat[df_cat["No_Carrinho"]]["Qtd"] * df_cat[df_cat["No_Carrinho"]]["Preco_Unit"]).sum()
         
-    novos_blocos.append(edited_df[["Categoria"] + colunas_tabela])
+        st.subheader(f"{cat} — R$ {subtotal_cat:.2f}")
+        
+        edited_df = st.data_editor(
+            df_cat[colunas_tabela],
+            key=f"editor_{cat}",
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "No_Carrinho": st.column_config.CheckboxColumn("Carrinho", default=False),
+                "Item": st.column_config.TextColumn("Produto", default="Novo item"),
+                "Qtd": st.column_config.NumberColumn("Qtd", min_value=0.0, step=0.5, default=1.0),
+                "Und": st.column_config.SelectboxColumn("Und", options=["und", "kg", "pct", "L", "g", "ml"], default="und"),
+                "Preco_Unit": st.column_config.NumberColumn("R$ Unit.", min_value=0.0, step=0.10, format="%.2f", default=0.0),
+            }
+        )
+        
+        edited_df["No_Carrinho"] = edited_df["No_Carrinho"].fillna(False).astype(bool)
+        edited_df["Item"] = edited_df["Item"].fillna("Novo item").astype(str)
+        edited_df["Qtd"] = pd.to_numeric(edited_df["Qtd"], errors="coerce").fillna(1.0)
+        edited_df["Und"] = edited_df["Und"].fillna("und").astype(str)
+        edited_df["Preco_Unit"] = pd.to_numeric(edited_df["Preco_Unit"], errors="coerce").fillna(0.0)
+        edited_df["Categoria"] = cat
+        
+        if not df_cat[colunas_tabela].equals(edited_df[colunas_tabela]):
+            houve_alteracao = True
+            
+        novos_blocos.append(edited_df[["Categoria"] + colunas_tabela])
 
-# Reconstrói a planilha completa e salva no Google Sheets se algo mudou
-if houve_alteracao:
-    df_reconstruido = pd.concat(novos_blocos, ignore_index=True)
-    df_reconstruido = df_reconstruido[df_reconstruido["Item"].str.strip() != ""].reset_index(drop=True)
-    st.session_state.df_compras = df_reconstruido
-    conn.update(spreadsheet=URL_PLANILHA, data=df_reconstruido)
-    st.toast("Alterações salvas no Google Sheets!", icon="☁️")
-    st.rerun()
+    if houve_alteracao:
+        df_reconstruido = pd.concat(novos_blocos, ignore_index=True)
+        df_reconstruido = df_reconstruido[df_reconstruido["Item"].str.strip() != ""].reset_index(drop=True)
+        st.session_state.df_compras = df_reconstruido
+        conn.update(spreadsheet=URL_PLANILHA, data=df_reconstruido)
+        st.toast("Alterações salvas no Google Sheets!", icon="☁️")
+        st.rerun()
 
-df_atualizado = st.session_state.df_compras
-valor_total_carrinho = (df_atualizado[df_atualizado["No_Carrinho"]]["Qtd"] * df_atualizado[df_atualizado["No_Carrinho"]]["Preco_Unit"]).sum()
+    df_atualizado = st.session_state.df_compras
+    valor_total_carrinho = (df_atualizado[df_atualizado["No_Carrinho"]]["Qtd"] * df_atualizado[df_atualizado["No_Carrinho"]]["Preco_Unit"]).sum()
 
-st.divider()
+    st.divider()
 
-col_res1, col_res2 = st.columns(2)
-col_res1.metric("💰 Valor Total no Carrinho", f"R$ {valor_total_carrinho:.2f}")
-col_res2.metric("📦 Itens Pegos", f"{df_atualizado['No_Carrinho'].sum()} de {len(df_atualizado)}")
+    col_res1, col_res2 = st.columns(2)
+    col_res1.metric("💰 Valor Total no Carrinho", f"R$ {valor_total_carrinho:.2f}")
+    col_res2.metric("📦 Itens Pegos", f"{df_atualizado['No_Carrinho'].sum()} de {len(df_atualizado)}")
+
+with aba_historico:
+    st.subheader("📈 Evolução de Gastos e Preços")
+    df_hist = conn.ler_historico(spreadsheet=URL_PLANILHA)
+    
+    if df_hist.empty:
+        st.info("Nenhuma compra registrada ainda. Quando finalizar uma ida ao mercado, clique em '💾 Salvar Compra no Histórico' na aba anterior.")
+    else:
+        df_hist["Preco_Unit"] = pd.to_numeric(df_hist["Preco_Unit"], errors="coerce").fillna(0.0)
+        df_hist["Total_Item"] = pd.to_numeric(df_hist["Total_Item"], errors="coerce").fillna(0.0)
+        
+        # Resumo total gasto por data de compra
+        resumo_datas = df_hist.groupby("Data", sort=False)["Total_Item"].sum().reset_index()
+        resumo_datas.columns = ["Data da Compra", "Total Gasto (R$)"]
+        st.markdown("**Resumo por Compra:**")
+        st.dataframe(resumo_datas, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Filtro para acompanhar a variação de preço de um produto específico
+        produtos_salvos = sorted(df_hist["Item"].unique().tolist())
+        produto_escolhido = st.selectbox("🔍 Comparar histórico de preço de um produto:", produtos_salvos)
+        
+        df_prod = df_hist[df_hist["Item"] == produto_escolhido][["Data", "Qtd", "Und", "Preco_Unit", "Total_Item"]]
+        st.dataframe(df_prod, use_container_width=True, hide_index=True)
