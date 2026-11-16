@@ -4,6 +4,8 @@ from datetime import datetime
 import gspread
 import streamlit as st
 import pandas as pd
+from PIL import Image
+from pyzbar.pyzbar import decode
 
 st.set_page_config(page_title="Lista de Mercado", page_icon="🛒", layout="centered")
 
@@ -12,43 +14,43 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/193UrLGzATObLaz8qyE7yyhYy
 
 # 2. Dados base da sua planilha original (usados apenas se o Google Sheets estiver vazio)
 DADOS_INICIAIS = [
-    {"Categoria": "Proteínas", "Item": "Peito / Filé de Frango", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 18.00, "No_Carrinho": True},
-    {"Categoria": "Proteínas", "Item": "Carne Moída - Acém ou Patinho", "Qtd": 4.0, "Und": "kg", "Preco_Unit": 25.00, "No_Carrinho": True},
-    {"Categoria": "Proteínas", "Item": "Ovos - Cartela c/ 30 und", "Qtd": 2.0, "Und": "und", "Preco_Unit": 35.00, "No_Carrinho": True},
-    {"Categoria": "Grãos e Cereais", "Item": "Arroz Branco", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 30.00, "No_Carrinho": True},
-    {"Categoria": "Grãos e Cereais", "Item": "Feijão Carioca ou Preto", "Qtd": 3.0, "Und": "kg", "Preco_Unit": 24.00, "No_Carrinho": True},
-    {"Categoria": "Grãos e Cereais", "Item": "Aveia em Flocos", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 12.00, "No_Carrinho": True},
-    {"Categoria": "Grãos e Cereais", "Item": "Macarrão Integral ou Comum", "Qtd": 2.0, "Und": "pct", "Preco_Unit": 14.00, "No_Carrinho": True},
-    {"Categoria": "Gordura e Óleos", "Item": "Azeite de Oliva", "Qtd": 1.0, "Und": "und", "Preco_Unit": 35.00, "No_Carrinho": True},
-    {"Categoria": "Gordura e Óleos", "Item": "Manteiga", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Hortifrúti", "Item": "Abóbora", "Qtd": 2.0, "Und": "kg", "Preco_Unit": 6.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Cenoura", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 19.90, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Abobrinha", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Mandioca", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Batata Inglesa", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Cebola", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 10.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Alho", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 10.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Banana", "Qtd": 4.0, "Und": "kg", "Preco_Unit": 6.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Maçã", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 15.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Mamão", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 15.00, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Laranja", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 3.60, "No_Carrinho": True},
-    {"Categoria": "Hortifrúti", "Item": "Couve", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Hortifrúti", "Item": "Alface", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Hortifrúti", "Item": "Brócolis", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Laticínios", "Item": "Leite UHT Integral", "Qtd": 4.0, "Und": "und", "Preco_Unit": 5.00, "No_Carrinho": True},
-    {"Categoria": "Laticínios", "Item": "Iogurte Natural Integral sem açúcar", "Qtd": 3.0, "Und": "und", "Preco_Unit": 5.00, "No_Carrinho": True},
-    {"Categoria": "Laticínios", "Item": "Requeijão", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Mercearia", "Item": "Pão", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Mercearia", "Item": "Peito de Peru", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Mercearia", "Item": "Queijo", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Limpeza", "Item": "Detergente", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Limpeza", "Item": "Saco Lixo", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Guloseimas", "Item": "Salgadinho", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Guloseimas", "Item": "Chocolate", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Bebidas", "Item": "Água com Gás", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Bebidas", "Item": "Coca-Cola", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Bebidas", "Item": "Cerveja", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
-    {"Categoria": "Diversos", "Item": "Item Diverso 1", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False},
+    {"Categoria": "Proteínas", "Item": "Peito / Filé de Frango", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 18.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Proteínas", "Item": "Carne Moída - Acém ou Patinho", "Qtd": 4.0, "Und": "kg", "Preco_Unit": 25.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Proteínas", "Item": "Ovos - Cartela c/ 30 und", "Qtd": 2.0, "Und": "und", "Preco_Unit": 35.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Grãos e Cereais", "Item": "Arroz Branco", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 30.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Grãos e Cereais", "Item": "Feijão Carioca ou Preto", "Qtd": 3.0, "Und": "kg", "Preco_Unit": 24.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Grãos e Cereais", "Item": "Aveia em Flocos", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 12.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Grãos e Cereais", "Item": "Macarrão Integral ou Comum", "Qtd": 2.0, "Und": "pct", "Preco_Unit": 14.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Gordura e Óleos", "Item": "Azeite de Oliva", "Qtd": 1.0, "Und": "und", "Preco_Unit": 35.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Gordura e Óleos", "Item": "Manteiga", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Abóbora", "Qtd": 2.0, "Und": "kg", "Preco_Unit": 6.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Cenoura", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 19.90, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Abobrinha", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Mandioca", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Batata Inglesa", "Qtd": 1.5, "Und": "kg", "Preco_Unit": 12.50, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Cebola", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 10.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Alho", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 10.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Banana", "Qtd": 4.0, "Und": "kg", "Preco_Unit": 6.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Maçã", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 15.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Mamão", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 15.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Laranja", "Qtd": 5.0, "Und": "kg", "Preco_Unit": 3.60, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Couve", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Alface", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Hortifrúti", "Item": "Brócolis", "Qtd": 1.0, "Und": "kg", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Laticínios", "Item": "Leite UHT Integral", "Qtd": 4.0, "Und": "und", "Preco_Unit": 5.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Laticínios", "Item": "Iogurte Natural Integral sem açúcar", "Qtd": 3.0, "Und": "und", "Preco_Unit": 5.00, "No_Carrinho": True, "Codigo_Barras": ""},
+    {"Categoria": "Laticínios", "Item": "Requeijão", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Mercearia", "Item": "Pão", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Mercearia", "Item": "Peito de Peru", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Mercearia", "Item": "Queijo", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Limpeza", "Item": "Detergente", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Limpeza", "Item": "Saco Lixo", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Guloseimas", "Item": "Salgadinho", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Guloseimas", "Item": "Chocolate", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Bebidas", "Item": "Água com Gás", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Bebidas", "Item": "Coca-Cola", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Bebidas", "Item": "Cerveja", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
+    {"Categoria": "Diversos", "Item": "Item Diverso 1", "Qtd": 1.0, "Und": "und", "Preco_Unit": 0.00, "No_Carrinho": False, "Codigo_Barras": ""},
 ]
 
 class PlanilhaGoogle:
@@ -119,21 +121,33 @@ def carregar_dados():
         df["Qtd"] = pd.to_numeric(df["Qtd"], errors="coerce").fillna(1.0)
         df["Preco_Unit"] = pd.to_numeric(df["Preco_Unit"], errors="coerce").fillna(0.0)
         df["No_Carrinho"] = df["No_Carrinho"].astype(str).str.upper().isin(["TRUE", "1", "SIM"])
+        if "Codigo_Barras" not in df.columns:
+            df["Codigo_Barras"] = ""
+        else:
+            df["Codigo_Barras"] = df["Codigo_Barras"].fillna("").astype(str).str.replace(".0", "", regex=False)
     return df
 if "df_compras" not in st.session_state:
     st.session_state.df_compras = carregar_dados()
 
 st.title("🛒 Controle de Mercado")
 
-aba_lista, aba_historico = st.tabs(["🛒 Lista Atual", "📊 Gráficos e Histórico"])
+# Barra de Compartilhamento e Sincronização em Tempo Real (para compras em dupla)
+with st.expander("👥 Compartilhar e Sincronizar em Dupla"):
+    st.caption("Envie o link deste app pelo WhatsApp para outra pessoa. Ambos editam a mesma lista simultaneamente.")
+    st.code("https://streamlit.app", language=None)
+    if st.button("🔄 Atualizar Lista Agora (Puxar alterações da outra pessoa)", use_container_width=True):
+        st.session_state.df_compras = carregar_dados()
+        st.toast("Lista sincronizada com a nuvem!", icon="🔄")
+        st.rerun()
+
+aba_lista, aba_scanner, aba_historico = st.tabs(["🛒 Lista Atual", "📷 Código de Barras", "📊 Gráficos e Histórico"])
 
 with aba_lista:
-    # Painel de Orçamento Máximo no topo para acompanhar durante as compras
     df_calc = st.session_state.df_compras
     total_atual = (df_calc[df_calc["No_Carrinho"]]["Qtd"] * df_calc[df_calc["No_Carrinho"]]["Preco_Unit"]).sum()
 
     with st.container(border=True):
-        col_orc1, col_orc2 = st.columns([1, 2])
+        col_orc1, col_orc2 = st.columns(2)
         orcamento_max = col_orc1.number_input("🎯 Orçamento Máximo (R$)", min_value=50.0, value=800.0, step=50.0)
         
         percentual = min(total_atual / orcamento_max, 1.0) if orcamento_max > 0 else 0.0
@@ -198,10 +212,14 @@ with aba_lista:
         edited_df["Preco_Unit"] = pd.to_numeric(edited_df["Preco_Unit"], errors="coerce").fillna(0.0)
         edited_df["Categoria"] = cat
         
+        # Preserva os códigos de barras já vinculados aos itens da categoria
+        codigos_existentes = df_cat["Codigo_Barras"].tolist() if "Codigo_Barras" in df_cat.columns else []
+        edited_df["Codigo_Barras"] = [codigos_existentes[i] if i < len(codigos_existentes) else "" for i in range(len(edited_df))]
+        
         if not df_cat[colunas_tabela].equals(edited_df[colunas_tabela]):
             houve_alteracao = True
             
-        novos_blocos.append(edited_df[["Categoria"] + colunas_tabela])
+        novos_blocos.append(edited_df[["Categoria"] + colunas_tabela + ["Codigo_Barras"]])
 
     if houve_alteracao:
         df_reconstruido = pd.concat(novos_blocos, ignore_index=True)
@@ -220,8 +238,67 @@ with aba_lista:
     col_res1.metric("💰 Valor Total no Carrinho", f"R$ {valor_total_carrinho:.2f}")
     col_res2.metric("📦 Itens Pegos", f"{df_atualizado['No_Carrinho'].sum()} de {len(df_atualizado)}")
 
+with aba_scanner:
+    st.subheader("📷 Leitor de Código de Barras")
+    st.write("Tire uma foto nítida do código de barras da embalagem ou digite o número abaixo.")
+    
+    foto_camera = st.camera_input("Aponte a câmera para o código de barras")
+    codigo_lido = ""
+    
+    if foto_camera is not None:
+        imagem = Image.open(foto_camera)
+        codigos_detectados = decode(imagem)
+        if codigos_detectados:
+            codigo_lido = codigos_detectados[0].data.decode("utf-8")
+            st.success(f"✅ Código detectado: **{codigo_lido}**")
+        else:
+            st.warning("Não foi possível ler o código na foto. Tente aproximar mais ou digitar abaixo.")
+            
+    codigo_manual = st.text_input("Ou digite/confirme o código de barras:", value=codigo_lido)
+    
+    if codigo_manual:
+        df_atual = st.session_state.df_compras
+        item_encontrado = df_atual[df_atual["Codigo_Barras"] == codigo_manual.strip()]
+        
+        if not item_encontrado.empty:
+            idx = item_encontrado.index[0]
+            nome_prod = df_atual.loc[idx, "Item"]
+            preco_atual = float(df_atual.loc[idx, "Preco_Unit"])
+            st.info(f"📦 Produto já cadastrado: **{nome_prod}** (Preço atual: R$ {preco_atual:.2f})")
+            
+            novo_preco_scan = st.number_input("Atualizar preço unitário (R$):", min_value=0.0, value=preco_atual, step=0.10)
+            if st.button("✅ Marcar no Carrinho e Salvar Preço", type="primary", use_container_width=True):
+                st.session_state.df_compras.loc[idx, "No_Carrinho"] = True
+                st.session_state.df_compras.loc[idx, "Preco_Unit"] = novo_preco_scan
+                conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
+                st.toast(f"{nome_prod} adicionado ao carrinho!", icon="🛒")
+                st.rerun()
+        else:
+            st.write("**Código novo!** Vincule a um item existente ou cadastre um novo produto:")
+            with st.form("cadastrar_barcode"):
+                nome_novo = st.text_input("Nome do Produto")
+                cat_nova = st.selectbox("Categoria", df_atual["Categoria"].unique().tolist())
+                col_s1, col_s2, col_s3 = st.columns(3)
+                qtd_nova = col_s1.number_input("Qtd", min_value=0.1, value=1.0, step=0.5)
+                und_nova = col_s2.selectbox("Und", ["und", "kg", "pct", "L", "g", "ml"])
+                preco_novo = col_s3.number_input("Preço (R$)", min_value=0.0, value=0.0, step=0.10)
+                
+                if st.form_submit_button("💾 Salvar e Colocar no Carrinho", use_container_width=True) and nome_novo:
+                    nova_linha = pd.DataFrame([{
+                        "Categoria": cat_nova,
+                        "Item": nome_novo,
+                        "Qtd": qtd_nova,
+                        "Und": und_nova,
+                        "Preco_Unit": preco_novo,
+                        "No_Carrinho": True,
+                        "Codigo_Barras": codigo_manual.strip()
+                    }])
+                    st.session_state.df_compras = pd.concat([st.session_state.df_compras, nova_linha], ignore_index=True)
+                    conn.update(spreadsheet=URL_PLANILHA, data=st.session_state.df_compras)
+                    st.toast(f"{nome_novo} cadastrado e marcado no carrinho!", icon="🎉")
+                    st.rerun()
+
 with aba_historico:
-    # 1. Gráfico em tempo real da compra atual no carrinho
     st.subheader("📊 Gastos por Categoria (Carrinho Atual)")
     df_carrinho_atual = st.session_state.df_compras[st.session_state.df_compras["No_Carrinho"]].copy()
     
@@ -234,32 +311,7 @@ with aba_historico:
 
     st.divider()
 
-    # 2. Histórico acumulado das compras já finalizadas
     st.subheader("📈 Histórico Acumulado e Evolução de Preços")
     df_hist = conn.ler_historico(spreadsheet=URL_PLANILHA)
     
     if df_hist.empty:
-        st.info("Nenhuma compra salva no histórico ainda. Clique em '💾 Salvar Compra no Histórico' na aba anterior para registrar.")
-    else:
-        df_hist["Preco_Unit"] = pd.to_numeric(df_hist["Preco_Unit"], errors="coerce").fillna(0.0)
-        df_hist["Total_Item"] = pd.to_numeric(df_hist["Total_Item"], errors="coerce").fillna(0.0)
-        
-        # Gráfico acumulado por categoria em todo o histórico
-        st.markdown("**Total Gasto por Categoria (Histórico Geral):**")
-        gastos_cat_hist = df_hist.groupby("Categoria")["Total_Item"].sum().sort_values(ascending=False)
-        st.bar_chart(gastos_cat_hist, color="#28B463")
-
-        # Resumo total gasto por data de compra
-        resumo_datas = df_hist.groupby("Data", sort=False)["Total_Item"].sum().reset_index()
-        resumo_datas.columns = ["Data da Compra", "Total Gasto (R$)"]
-        st.markdown("**Resumo por Data:**")
-        st.dataframe(resumo_datas, use_container_width=True, hide_index=True)
-        
-        st.divider()
-        
-        # Filtro para acompanhar a variação de preço de um produto específico
-        produtos_salvos = sorted(df_hist["Item"].unique().tolist())
-        produto_escolhido = st.selectbox("🔍 Comparar histórico de preço de um produto:", produtos_salvos)
-        
-        df_prod = df_hist[df_hist["Item"] == produto_escolhido][["Data", "Qtd", "Und", "Preco_Unit", "Total_Item"]]
-        st.dataframe(df_prod, use_container_width=True, hide_index=True)
