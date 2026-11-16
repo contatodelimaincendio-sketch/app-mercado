@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="Lista de Mercado", page_icon="🛒", layout="centered")
 
 # 1. COLE AQUI O LINK COMPLETO DA SUA PLANILHA DO GOOGLE SHEETS
-URL_PLANILHA = "https://google.com"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/193UrLGzATObLaz8qyE7yyhYy7j8mZyamdtK_9209KDM/edit?gid=779834175#gid=779834175"
 
 # 2. Dados base da sua planilha original (usados apenas se o Google Sheets estiver vazio)
 DADOS_INICIAIS = [
